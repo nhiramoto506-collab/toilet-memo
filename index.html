@@ -1,0 +1,674 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0e1220">
+<meta name="color-scheme" content="dark">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="誘導メモ">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="icon" type="image/png" href="icon-192.png">
+<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}[hidden]{display:none!important}</style>
+<title>トイレ誘導メモ</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&family=DM+Mono:wght@400;500&display=swap">
+<style>
+/* Layout concept: one-hand night-shift tool. Big clock on top, residents sorted by how soon the next guidance is due,
+   tab bar at thumb reach, and a bottom sheet for recording. Dark only on purpose: dim rooms, sleeping residents. */
+:root {
+  --bg: #0e1220;
+  --surface: #161b2e;
+  --surface-2: #1e2542;
+  --line: #2c3558;
+  --line-2: #3a4570;
+  --fg: #dfe3f1;
+  --fg-dim: #98a0bf;
+  --accent: #9db0ff;
+  --accent-ink: #0e1220;
+  --ok: #6dc7a3;
+  --ok-bg: #173b33;
+  --soon: #e8b64c;
+  --soon-bg: #3d3114;
+  --over: #f0766a;
+  --over-ink: #2a0d0b;
+  --c-yes: #86b5ff;
+  --c-none: #98a0bf;
+  --c-inc: #ffa36b;
+  --scrim: rgba(4, 6, 14, 0.68);
+  --font-ui: "BIZ UDPGothic", "Hiragino Sans", "Yu Gothic UI", "Noto Sans JP", system-ui, sans-serif;
+  --font-num: "DM Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: 15px/1.55 var(--font-ui);
+  padding-block: 10px 130px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  -webkit-text-size-adjust: 100%;
+}
+body.lock { overflow: hidden; }
+button { font: inherit; color: inherit; -webkit-tap-highlight-color: transparent; }
+:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.wrap { max-width: 560px; margin: 0 auto; }
+
+/* header */
+.top { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; padding: 6px 0 16px; }
+.brand { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.brand h1 { margin: 0; font-size: 16px; font-weight: 700; letter-spacing: 0.06em; }
+.demo-tag { align-self: flex-start; font-size: 12px; padding: 2px 8px; border: 1px dashed var(--fg-dim); border-radius: 6px; color: var(--fg-dim); }
+.clock { font-family: var(--font-num); font-size: 46px; line-height: 0.95; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
+.notice { margin: 0 0 12px; padding: 10px 12px; border: 1px solid var(--soon); border-radius: 10px; background: var(--soon-bg); font-size: 13px; }
+.hint { margin: 14px 2px 0; font-size: 13px; color: var(--fg-dim); }
+
+/* resident cards */
+.list { display: grid; gap: 12px; }
+.card { display: block; width: 100%; text-align: left; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 14px; cursor: pointer; --st: var(--fg-dim); --st-bg: var(--surface-2); }
+.card[data-st="ok"] { --st: var(--ok); --st-bg: var(--ok-bg); }
+.card[data-st="soon"] { --st: var(--soon); --st-bg: var(--soon-bg); }
+.card[data-st="over"] { --st: var(--over); }
+.card:active { background: var(--surface-2); }
+.card span { display: block; }
+.card .row1 { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.name { font-size: 20px; font-weight: 700; min-width: 0; overflow-wrap: anywhere; }
+.pill { font-size: 13px; font-weight: 700; padding: 4px 11px; border-radius: 999px; border: 1.5px solid var(--st); color: var(--st); white-space: nowrap; }
+.card[data-st="soon"] .pill { background: var(--st-bg); }
+.card[data-st="over"] .pill { background: var(--st); color: var(--over-ink); }
+.card .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 12px; }
+.card .col { min-width: 0; }
+.lab { font-size: 12px; letter-spacing: 0.08em; color: var(--fg-dim); margin-bottom: 2px; }
+.t-last { font-family: var(--font-num); font-size: 26px; line-height: 1.2; font-variant-numeric: tabular-nums; }
+.t-next { font-family: var(--font-num); font-size: 34px; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.dim { color: var(--fg-dim); }
+.sub { font-size: 13px; color: var(--fg-dim); line-height: 1.45; }
+.rem { font-size: 18px; font-weight: 700; color: var(--st); line-height: 1.35; }
+.card .gauge { position: relative; height: 10px; border-radius: 5px; background: var(--surface-2); margin-top: 14px; }
+.card:active .gauge { background: var(--line); }
+.gauge .win { position: absolute; top: 0; bottom: 0; border-radius: 5px; background: var(--st); opacity: 0.4; }
+.gauge .now { position: absolute; top: -4px; bottom: -4px; width: 4px; margin-left: -2px; border-radius: 2px; background: var(--fg); }
+.card .note { margin-top: 8px; font-size: 13px; color: var(--fg-dim); }
+
+/* tab bar */
+.tabs { position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; background: var(--surface); border-top: 1px solid var(--line);
+  padding: 8px max(16px, env(safe-area-inset-right, 0px)) calc(8px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); }
+.tabs-in { max-width: 560px; margin: 0 auto; display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.tab { min-height: 52px; border: 0; border-radius: 12px; background: transparent; color: var(--fg-dim); font-size: 16px; font-weight: 700; cursor: pointer; }
+.tab[aria-current="page"] { background: var(--surface-2); color: var(--fg); box-shadow: inset 0 -3px 0 var(--accent); }
+
+/* record sheet */
+.scrim { position: fixed; inset: 0; background: var(--scrim); z-index: 30; }
+.sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; max-width: 560px; margin: 0 auto; max-height: 92%; overflow-y: auto;
+  background: var(--surface); border: 1px solid var(--line); border-bottom: 0; border-radius: 20px 20px 0 0;
+  padding: 16px max(16px, env(safe-area-inset-right, 0px)) calc(16px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
+  animation: up 0.16s ease-out; }
+@keyframes up { from { transform: translateY(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .sheet { animation: none; } }
+.sheet-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.sheet-head h2 { margin: 0; font-size: 22px; }
+.btn-sm { min-height: 48px; padding: 0 16px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface-2); font-weight: 700; cursor: pointer; }
+.trow { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 10px; margin: 14px 0 12px; }
+.trow label { color: var(--fg-dim); font-size: 13px; letter-spacing: 0.08em; }
+.trow input { width: 100%; min-height: 48px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface-2); color: var(--fg); font-family: var(--font-num); font-size: 24px; color-scheme: dark; }
+.seg { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; border-radius: 12px; background: var(--surface-2); }
+.seg button { min-height: 48px; border: 0; border-radius: 9px; background: transparent; color: var(--fg-dim); font-weight: 700; font-size: 16px; cursor: pointer; }
+.seg button[aria-checked="true"] { background: var(--accent); color: var(--accent-ink); }
+.actions { display: grid; gap: 10px; margin-top: 14px; }
+.act { min-height: 64px; border-radius: 14px; border: 2px solid; font-size: 19px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 12px; }
+.act.yes { background: #1d3a66; border-color: var(--c-yes); color: #e6f0ff; }
+.act.none { background: var(--surface-2); border-color: var(--c-none); color: var(--fg); }
+.act.inc { background: #4a2c18; border-color: var(--c-inc); color: #ffe9dc; }
+.act:active { filter: brightness(1.25); }
+.hist-h { margin: 18px 0 6px; font-size: 13px; letter-spacing: 0.08em; color: var(--fg-dim); font-weight: 400; }
+.hist { list-style: none; margin: 0; padding: 0; }
+.hist li { display: grid; grid-template-columns: 82px 1fr auto; align-items: center; gap: 8px; padding: 6px 0; border-top: 1px solid var(--line); font-size: 14px; }
+.hist .h-t { font-family: var(--font-num); font-variant-numeric: tabular-nums; }
+.hist .empty { display: block; color: var(--fg-dim); }
+.mini { min-height: 40px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface-2); font-size: 14px; cursor: pointer; }
+.mini.armed { border-color: var(--over); color: var(--over); }
+
+/* shapes used in buttons and legend; same shapes as the chart */
+.g { display: inline-block; flex: none; }
+.g-yes { width: 14px; height: 14px; border-radius: 50%; background: var(--c-yes); }
+.g-none { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--c-none); }
+.g-inc { width: 11px; height: 11px; background: var(--c-inc); transform: rotate(45deg); margin: 1px; }
+
+/* toast */
+.toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(82px + env(safe-area-inset-bottom, 0px)); z-index: 50; width: max-content; max-width: calc(100% - 32px);
+  display: flex; align-items: center; gap: 12px; padding: 10px 10px 10px 16px; border-radius: 12px; background: var(--line-2); color: var(--fg); font-size: 14px; }
+.toast button { min-height: 40px; padding: 0 14px; border-radius: 8px; border: 0; background: var(--accent); color: var(--accent-ink); font-weight: 700; cursor: pointer; }
+
+/* pattern view */
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { min-height: 44px; padding: 0 16px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); font-weight: 700; cursor: pointer; }
+.chip[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.view h2 { margin: 22px 0 8px; font-size: 15px; }
+.chartbox { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 12px; }
+.chartbox p { margin: 8px 0 0; font-size: 12px; color: var(--fg-dim); }
+svg { display: block; width: 100%; height: auto; }
+.ax { fill: var(--fg-dim); font: 11px var(--font-num); }
+.rl { fill: var(--fg-dim); font: 11px var(--font-ui); }
+.rl.cur { fill: var(--fg); font-weight: 700; }
+.grid { stroke: var(--line); stroke-width: 1; }
+.grid.maj { stroke: var(--line-2); }
+.rowline { stroke: var(--line); stroke-width: 1; stroke-dasharray: 2 3; }
+.m-yes { fill: var(--c-yes); }
+.m-none { fill: var(--surface); stroke: var(--c-none); stroke-width: 2; }
+.m-inc { fill: var(--c-inc); }
+.bar { fill: var(--c-yes); opacity: 0.45; }
+.bar.hi { opacity: 1; }
+.cnt { fill: var(--fg); font: 11px var(--font-num); text-anchor: middle; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 10px; font-size: 13px; color: var(--fg-dim); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.stats { margin: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; }
+.stats > div { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 12px 14px; border-top: 1px solid var(--line); }
+.stats > div:first-child { border-top: 0; }
+.stats dt { color: var(--fg-dim); font-size: 14px; }
+.stats dd { margin: 0; text-align: right; font-weight: 700; }
+.stats small { display: block; font-weight: 400; color: var(--fg-dim); font-size: 12px; }
+.empty-box { padding: 20px 14px; border: 1px dashed var(--line-2); border-radius: 14px; color: var(--fg-dim); }
+
+/* settings */
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 14px; }
+.panel p { margin: 0 0 8px; }
+.panel ul { margin: 0; padding-left: 1.2em; }
+.panel li { margin: 4px 0; }
+.rules { color: var(--fg-dim); font-size: 14px; }
+.addrow { display: grid; grid-template-columns: 1fr auto; gap: 10px; margin-top: 10px; }
+.addrow input { min-height: 48px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface-2); color: var(--fg); font-size: 18px; width: 100%; min-width: 0; color-scheme: dark; }
+.reslist { list-style: none; margin: 10px 0 0; padding: 0; }
+.reslist li { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 10px; padding: 6px 0; border-top: 1px solid var(--line); }
+.reslist .rc { color: var(--fg-dim); font-size: 13px; }
+.btn-wide { width: 100%; min-height: 52px; margin-top: 10px; border-radius: 12px; border: 1px solid var(--line-2); background: var(--surface-2); font-weight: 700; cursor: pointer; }
+.btn-wide.armed { border-color: var(--over); color: var(--over); }
+.foot { margin: 16px 2px 0; font-size: 12px; color: var(--fg-dim); }
+</style>
+</head>
+<body>
+
+
+<div class="wrap">
+  <header class="top">
+    <div class="brand">
+      <h1>トイレ誘導メモ</h1>
+      <span class="demo-tag" id="demoTag" hidden>ダミーデータ</span>
+    </div>
+    <div class="clock" id="clock" aria-label="現在時刻">--:--</div>
+  </header>
+  <p class="notice" id="storeNote" hidden>この画面では記録を保存できません。閉じると消えます。</p>
+
+  <main>
+    <section id="viewList" class="view">
+      <div class="list" id="list"></div>
+      <p class="hint">カードをタップして記録します。並びは次の目安が近い順です。</p>
+    </section>
+
+    <section id="viewPattern" class="view" hidden>
+      <div class="chips" id="chips"></div>
+      <div id="patBody"></div>
+    </section>
+
+    <section id="viewSettings" class="view" hidden>
+      <h2>入居者</h2>
+      <div class="panel">
+        <p>名前は仮名にしてください（例：Eさん）。実名や個人が分かる情報は入れないでください。</p>
+        <div class="addrow">
+          <input id="newName" type="text" maxlength="10" placeholder="仮名" autocomplete="off">
+          <button type="button" class="btn-sm" data-act="addres">追加</button>
+        </div>
+        <ul class="reslist" id="resList"></ul>
+      </div>
+
+      <h2>次の目安のしくみ</h2>
+      <div class="panel rules" id="rules"></div>
+
+      <h2>データ</h2>
+      <div class="panel">
+        <p>記録はこの端末のブラウザの中だけに保存されます。ブラウザのデータを消すと失われます。</p>
+        <button type="button" class="btn-wide" data-act="reset-demo" data-orig="ダミーデータに戻す" data-armed-text="もう一度押すと全記録がダミーに置き換わります">ダミーデータに戻す</button>
+        <button type="button" class="btn-wide" data-act="clear-all" data-orig="すべての記録を消す" data-armed-text="もう一度押すと全記録が消えます">すべての記録を消す</button>
+      </div>
+      <p class="foot">目安は見回りの参考です。ご本人の様子とケアプランを優先してください。実際の現場で使う前に、施設の情報管理ルールを確認してください。</p>
+    </section>
+  </main>
+</div>
+
+<nav class="tabs" aria-label="画面の切り替え">
+  <div class="tabs-in">
+    <button type="button" class="tab" data-act="tab" data-tab="list" aria-current="page">一覧</button>
+    <button type="button" class="tab" data-act="tab" data-tab="pattern">パターン</button>
+    <button type="button" class="tab" data-act="tab" data-tab="settings">設定</button>
+  </div>
+</nav>
+
+<div id="scrim" class="scrim" data-act="close" hidden></div>
+<section id="sheet" class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle" hidden>
+  <div class="sheet-head">
+    <h2 id="sheetTitle"></h2>
+    <button type="button" class="btn-sm" data-act="close">閉じる</button>
+  </div>
+  <div class="trow">
+    <label for="tInput">時刻</label>
+    <input id="tInput" type="time" step="60">
+    <button type="button" class="btn-sm" data-act="now">いま</button>
+  </div>
+  <div class="seg" role="radiogroup" aria-label="きっかけ">
+    <button type="button" role="radio" data-act="by" data-by="call" aria-checked="false">コールで誘導</button>
+    <button type="button" role="radio" data-act="by" data-by="staff" aria-checked="true">声掛けで誘導</button>
+  </div>
+  <div class="actions">
+    <button type="button" class="act yes" data-act="rec" data-res="yes"><i class="g g-yes"></i>排尿あり</button>
+    <button type="button" class="act none" data-act="rec" data-res="none"><i class="g g-none"></i>出なし</button>
+    <button type="button" class="act inc" data-act="rec" data-res="inc"><i class="g g-inc"></i>失禁あり</button>
+  </div>
+  <h3 class="hist-h">最近の記録</h3>
+  <ul class="hist" id="hist"></ul>
+</section>
+<div id="toast" class="toast" hidden></div>
+
+<script>
+(function () {
+  'use strict';
+
+  var KEY = 'toilet-memo-v1';
+  var CFG = { nightStart: 21, nightHours: 12, minIntervals: 3, recent: 7, maxGap: 360, retry: 30, retryLo: 20, retryHi: 45, minHalf: 10 };
+  var LABEL = { yes: '排尿あり', none: '出なし', inc: '失禁あり' };
+  var BY = { call: 'コール', staff: '声掛け' };
+
+  var state = null, tab = 'list', selRid = null, sheetRid = null, curBy = 'staff', touched = false, toastTimer = null, storageOK = true;
+
+  function $(s) { return document.querySelector(s); }
+  function pad(n) { return n < 10 ? '0' + n : '' + n; }
+  function hm(ms) { var d = new Date(ms); return pad(d.getHours()) + ':' + pad(d.getMinutes()); }
+  function md(ms) { var d = new Date(ms); return (d.getMonth() + 1) + '/' + d.getDate(); }
+  function stamp(ms) { return new Date(ms).toDateString() === new Date().toDateString() ? hm(ms) : md(ms) + ' ' + hm(ms); }
+  function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  function durText(min) {
+    var m = Math.max(0, Math.round(min));
+    if (m < 1) return '1分未満';
+    var h = Math.floor(m / 60), r = m % 60;
+    if (!h) return r + '分';
+    if (!r) return h + '時間';
+    return h + '時間' + r + '分';
+  }
+  function agoText(min) { return min < 1 ? 'たった今' : durText(min) + '前'; }
+  function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
+  function resById(id) { for (var i = 0; i < state.residents.length; i++) if (state.residents[i].id === id) return state.residents[i]; return null; }
+  function quantile(arr, q) {
+    var a = arr.slice().sort(function (x, y) { return x - y; });
+    var pos = (a.length - 1) * q, b = Math.floor(pos), r = pos - b;
+    return a[b + 1] !== undefined ? a[b] + r * (a[b + 1] - a[b]) : a[b];
+  }
+
+  /* ---------- storage ---------- */
+  function load() {
+    try {
+      var s = localStorage.getItem(KEY);
+      if (!s) return null;
+      var o = JSON.parse(s);
+      if (o && Array.isArray(o.residents) && Array.isArray(o.records)) return o;
+    } catch (e) {}
+    return null;
+  }
+  function save() {
+    try { localStorage.setItem(KEY, JSON.stringify(state)); storageOK = true; } catch (e) { storageOK = false; }
+    $('#storeNote').hidden = storageOK;
+  }
+
+  /* ---------- nights ---------- */
+  function nightStarts(now, n) {
+    var d = new Date(now);
+    var b = new Date(d.getFullYear(), d.getMonth(), d.getDate(), CFG.nightStart, 0, 0, 0);
+    if (d.getHours() < CFG.nightStart) b = new Date(b.getFullYear(), b.getMonth(), b.getDate() - 1, CFG.nightStart, 0, 0, 0);
+    var a = [];
+    for (var k = 0; k < n; k++) a.push(new Date(b.getFullYear(), b.getMonth(), b.getDate() - k, CFG.nightStart, 0, 0, 0).getTime());
+    return a;
+  }
+
+  /* ---------- demo data (all made up) ---------- */
+  function mulberry(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; var t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+  function makeDemo() {
+    var now = Date.now();
+    var profiles = [
+      { name: 'Aさん', base: 135, sd: 14, inc: 0.04, call: 0.55, none: 0.20 },
+      { name: 'Bさん', base: 185, sd: 40, inc: 0.10, call: 0.40, none: 0.35 },
+      { name: 'Cさん', base: 115, sd: 12, inc: 0.15, call: 0.65, none: 0.15 },
+      { name: 'Dさん', base: 210, sd: 30, inc: 0.05, call: 0.30, none: 0.40 }
+    ];
+    var ns = nightStarts(now, 7), residents = [], records = [];
+    profiles.forEach(function (p, i) {
+      var rid = 'demo' + (i + 1);
+      residents.push({ id: rid, name: p.name });
+      var rnd = mulberry(1000 + i * 77);
+      var gauss = function () { var u = 0; for (var j = 0; j < 6; j++) u += rnd(); return (u - 3) / Math.sqrt(0.5); };
+      ns.forEach(function (start, k) {
+        var end = start + CFG.nightHours * 3600000;
+        var t = start + (10 + rnd() * 45) * 60000;
+        while (t < end) {
+          if (k === 0 && t > now - 3 * 60000) break;
+          var by = rnd() < p.call ? 'call' : 'staff', res, x = rnd();
+          if (by === 'call') res = x < p.inc ? 'inc' : 'yes';
+          else res = x < p.inc * 0.5 ? 'inc' : (x < p.inc * 0.5 + p.none ? 'none' : 'yes');
+          records.push({ id: rid + '-' + k + '-' + records.length, rid: rid, t: Math.round(t / 60000) * 60000, res: res, by: by });
+          t += (res === 'none' ? 30 + rnd() * 15 : Math.max(40, p.base + gauss() * p.sd)) * 60000;
+        }
+      });
+    });
+    return { v: 1, demo: true, lastBy: 'staff', residents: residents, records: records };
+  }
+
+  /* ---------- prediction ---------- */
+  function analyze(rid, now) {
+    var recs = state.records.filter(function (r) { return r.rid === rid; }).sort(function (a, b) { return a.t - b.t; });
+    var out = { rid: rid, last: null, status: 'empty', target: null };
+    if (!recs.length) return out;
+    var last = recs[recs.length - 1];
+    out.last = last;
+    out.sinceLast = Math.max(0, (now - last.t) / 60000);
+    if (out.sinceLast > CFG.maxGap) { out.status = 'stale'; return out; }
+    var voids = recs.filter(function (r) { return r.res !== 'none'; });
+    var ints = [];
+    for (var i = 1; i < voids.length; i++) {
+      var g = (voids[i].t - voids[i - 1].t) / 60000;
+      if (g >= 5 && g <= CFG.maxGap) ints.push(g);
+    }
+    var recent = ints.slice(-CFG.recent);
+    if (recent.length < CFG.minIntervals || !voids.length) { out.status = 'nomodel'; return out; }
+    var med = quantile(recent, 0.5);
+    var lo = Math.max(5, Math.min(quantile(recent, 0.25), med - CFG.minHalf));
+    var hi = Math.max(quantile(recent, 0.75), med + CFG.minHalf);
+    var lastVoid = voids[voids.length - 1];
+    var anchor = lastVoid.t, note = '', mode = 'normal';
+    if (last.res === 'none' && last.t > lastVoid.t) {
+      if (last.t + CFG.retry * 60000 > lastVoid.t + med * 60000) {
+        anchor = last.t; med = CFG.retry; lo = CFG.retryLo; hi = CFG.retryHi; mode = 'retry'; note = '出なし後の再誘導の目安です';
+      } else {
+        note = '出なし ' + hm(last.t) + ' を記録済み。排尿 ' + hm(lastVoid.t) + ' が基準です';
+      }
+    }
+    var el = Math.max(0, (now - anchor) / 60000);
+    out.anchor = anchor; out.mode = mode; out.note = note; out.med = med; out.lo = lo; out.hi = hi; out.elapsed = el;
+    out.target = anchor + med * 60000;
+    out.status = el < lo ? 'ok' : (el <= hi ? 'soon' : 'over');
+    return out;
+  }
+  function rank(a, now) {
+    if (a.target != null) return (a.target - now) / 60000;
+    if (a.status === 'nomodel') return 1e6 - a.sinceLast;
+    if (a.status === 'stale') return 2e6 - a.sinceLast;
+    return 3e6;
+  }
+
+  /* ---------- list view ---------- */
+  var PILL = { ok: '余裕あり', soon: 'そろそろ', over: '目安超過', nomodel: '目安なし', stale: '記録が古い', empty: '記録なし' };
+  function cardHTML(r, a, now) {
+    var last, next, gauge = '', note = '';
+    if (a.last) {
+      last = '<span class="t-last">' + hm(a.last.t) + '</span><span class="sub">' + agoText(a.sinceLast) + '・' + LABEL[a.last.res] + '</span>';
+    } else {
+      last = '<span class="t-last dim">--:--</span><span class="sub">記録なし</span>';
+    }
+    if (a.target != null) {
+      var rem = (a.target - now) / 60000;
+      var rt = rem >= 1 ? 'あと' + durText(rem) : (rem > -1 ? 'ちょうど今' : durText(-rem) + '超過');
+      next = '<span class="t-next">' + hm(a.target) + '</span><span class="rem">' + rt + '</span><span class="sub">' + hm(a.anchor + a.lo * 60000) + '〜' + hm(a.anchor + a.hi * 60000) + '</span>';
+      var max = Math.max(a.hi * 1.25, a.elapsed * 1.06, 1);
+      gauge = '<span class="gauge" role="img" aria-label="前回の排尿から' + durText(a.elapsed) + '。目安の幅は' + durText(a.lo) + 'から' + durText(a.hi) + '"><span class="win" style="left:' + (a.lo / max * 100).toFixed(1) + '%;width:' + ((a.hi - a.lo) / max * 100).toFixed(1) + '%"></span><span class="now" style="left:' + (Math.min(a.elapsed / max, 1) * 100).toFixed(1) + '%"></span></span>';
+      if (a.note) note = '<span class="note">' + esc(a.note) + '</span>';
+    } else {
+      var why = a.status === 'nomodel' ? '排尿の間隔が' + CFG.minIntervals + '回分たまると表示します' : (a.status === 'stale' ? '6時間以上あいています' : '');
+      next = '<span class="t-next dim">--:--</span><span class="sub">' + why + '</span>';
+    }
+    return '<button type="button" class="card" data-act="open" data-rid="' + r.id + '" data-st="' + a.status + '">' +
+      '<span class="row1"><span class="name">' + esc(r.name) + '</span><span class="pill">' + PILL[a.status] + '</span></span>' +
+      '<span class="cols"><span class="col"><span class="lab">前回</span>' + last + '</span><span class="col"><span class="lab">次の目安</span>' + next + '</span></span>' +
+      gauge + note + '</button>';
+  }
+  function renderList() {
+    var now = Date.now();
+    if (!state.residents.length) { $('#list').innerHTML = '<div class="empty-box">入居者がいません。設定から仮名で追加してください。</div>'; return; }
+    var items = state.residents.map(function (r) { return { r: r, a: analyze(r.id, now) }; });
+    items.sort(function (x, y) { return rank(x.a, now) - rank(y.a, now); });
+    $('#list').innerHTML = items.map(function (it) { return cardHTML(it.r, it.a, now); }).join('');
+  }
+
+  /* ---------- pattern view ---------- */
+  function renderPattern() {
+    var chips = $('#chips'), body = $('#patBody');
+    if (!state.residents.length) { chips.innerHTML = ''; body.innerHTML = '<div class="empty-box">入居者がいません。</div>'; return; }
+    if (!selRid || !resById(selRid)) selRid = state.residents[0].id;
+    chips.innerHTML = state.residents.map(function (r) {
+      return '<button type="button" class="chip" data-act="sel" data-rid="' + r.id + '" aria-pressed="' + (r.id === selRid) + '">' + esc(r.name) + '</button>';
+    }).join('');
+
+    var now = Date.now(), N = 7, len = CFG.nightHours * 3600000, ns = nightStarts(now, N);
+    var rows = ns.map(function () { return []; });
+    state.records.forEach(function (r) {
+      if (r.rid !== selRid || r.t > now + 60000) return;
+      for (var k = 0; k < N; k++) if (r.t >= ns[k] && r.t < ns[k] + len) { rows[k].push(r); break; }
+    });
+    var all = [].concat.apply([], rows);
+    if (!all.length) { body.innerHTML = '<div class="empty-box">直近7夜の記録がありません。記録がたまるとここにパターンが出ます。</div>'; return; }
+
+    var W = 320, LW = 50, PR = 8, CW = W - LW - PR, TOP = 22, RH = 26, H = TOP + RH * N + 6, mins = CFG.nightHours * 60;
+    var X = function (m) { return LW + m / mins * CW; };
+    var s = '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="夜ごとのトイレの時刻">';
+    var h, x;
+    for (h = 0; h <= CFG.nightHours; h++) {
+      x = X(h * 60).toFixed(1);
+      s += '<line class="grid' + (h % 2 === 0 ? ' maj' : '') + '" x1="' + x + '" y1="' + (TOP - 4) + '" x2="' + x + '" y2="' + (H - 4) + '"/>';
+      if (h % 2 === 0) s += '<text class="ax" x="' + x + '" y="11" text-anchor="middle">' + ((CFG.nightStart + h) % 24) + '</text>';
+    }
+    var tonight = now >= ns[0] && now < ns[0] + len;
+    rows.forEach(function (list, k) {
+      var cy = TOP + k * RH + RH / 2;
+      s += '<line class="rowline" x1="' + LW + '" y1="' + cy + '" x2="' + (LW + CW) + '" y2="' + cy + '"/>';
+      s += '<text class="rl' + (k === 0 ? ' cur' : '') + '" x="' + (LW - 8) + '" y="' + (cy + 4) + '" text-anchor="end">' + (k === 0 ? (tonight ? '今夜' : '昨夜') : md(ns[k])) + '</text>';
+      list.forEach(function (r) {
+        var cx = X((r.t - ns[k]) / 60000).toFixed(1), tip = '<title>' + hm(r.t) + ' ' + LABEL[r.res] + '（' + BY[r.by] + '）</title>';
+        if (r.res === 'yes') s += '<circle class="m-yes" cx="' + cx + '" cy="' + cy + '" r="5">' + tip + '</circle>';
+        else if (r.res === 'none') s += '<circle class="m-none" cx="' + cx + '" cy="' + cy + '" r="4.2">' + tip + '</circle>';
+        else s += '<rect class="m-inc" x="' + (cx - 4) + '" y="' + (cy - 4) + '" width="8" height="8" transform="rotate(45 ' + cx + ' ' + cy + ')">' + tip + '</rect>';
+      });
+    });
+    s += '</svg>';
+    var legend = '<div class="legend"><span><i class="g g-yes"></i>排尿あり</span><span><i class="g g-none"></i>出なし</span><span><i class="g g-inc"></i>失禁あり</span></div>';
+    var chart = '<h2>夜ごとのトイレ（直近7夜）</h2><div class="chartbox">' + s + legend + '<p>各行は夜勤の開始日です。横軸は時刻（21時〜翌9時）。</p></div>';
+
+    // hour histogram of actual voids
+    var counts = []; for (h = 0; h < CFG.nightHours; h++) counts.push(0);
+    rows.forEach(function (list, k) {
+      list.forEach(function (r) { if (r.res === 'none') return; var i = Math.floor((r.t - ns[k]) / 60000 / 60); if (i >= 0 && i < counts.length) counts[i]++; });
+    });
+    var mx = Math.max.apply(null, counts), HH = 100, yb = 72, yt = 18;
+    var hs = '<svg viewBox="0 0 ' + W + ' ' + HH + '" role="img" aria-label="時間帯ごとの排尿の回数">';
+    hs += '<line class="grid maj" x1="' + LW + '" y1="' + yb + '" x2="' + (LW + CW) + '" y2="' + yb + '"/>';
+    counts.forEach(function (c, i) {
+      var bx = X(i * 60) + 1.5, bw = CW / CFG.nightHours - 3, bh = mx ? c / mx * (yb - yt) : 0;
+      if (c > 0) {
+        hs += '<rect class="bar' + (c === mx && mx >= 2 ? ' hi' : '') + '" x="' + bx.toFixed(1) + '" y="' + (yb - bh).toFixed(1) + '" width="' + bw.toFixed(1) + '" height="' + bh.toFixed(1) + '" rx="2"><title>' + ((CFG.nightStart + i) % 24) + '時台 ' + c + '回</title></rect>';
+        hs += '<text class="cnt" x="' + (bx + bw / 2).toFixed(1) + '" y="' + (yb - bh - 4).toFixed(1) + '">' + c + '</text>';
+      }
+      if (i % 2 === 0) hs += '<text class="ax" x="' + X(i * 60).toFixed(1) + '" y="' + (yb + 15) + '" text-anchor="middle">' + ((CFG.nightStart + i) % 24) + '</text>';
+    });
+    hs += '</svg>';
+    var hist = '<h2>時間帯ごとの排尿</h2><div class="chartbox">' + hs + '<p>排尿あり・失禁ありの回数です（直近7夜の合計）。濃い棒が最も多い時間帯です。</p></div>';
+
+    // stats
+    var ints = [];
+    rows.forEach(function (list) {
+      var v = list.filter(function (r) { return r.res !== 'none'; }).sort(function (a, b) { return a.t - b.t; });
+      for (var i = 1; i < v.length; i++) { var g = (v[i].t - v[i - 1].t) / 60000; if (g >= 5 && g <= CFG.maxGap) ints.push(g); }
+    });
+    var call = all.filter(function (r) { return r.by === 'call'; }).length, staff = all.length - call;
+    var staffNone = all.filter(function (r) { return r.by === 'staff' && r.res === 'none'; }).length;
+    var inc = all.filter(function (r) { return r.res === 'inc'; }).length;
+    var st = '<dl class="stats">';
+    if (ints.length >= 3) {
+      st += '<div><dt>排尿の間隔（中央値）</dt><dd>' + durText(quantile(ints, 0.5)) + '<small>ふだんは ' + durText(quantile(ints, 0.25)) + '〜' + durText(quantile(ints, 0.75)) + '</small></dd></div>';
+      st += '<div><dt>最短 / 最長</dt><dd>' + durText(Math.min.apply(null, ints)) + ' / ' + durText(Math.max.apply(null, ints)) + '</dd></div>';
+    } else {
+      st += '<div><dt>排尿の間隔</dt><dd>データ不足</dd></div>';
+    }
+    st += '<div><dt>きっかけ</dt><dd>コール ' + call + '回 ／ 声掛け ' + staff + '回</dd></div>';
+    st += '<div><dt>声掛けで出なし</dt><dd>' + staffNone + '回<small>声掛け ' + staff + '回のうち</small></dd></div>';
+    st += '<div><dt>失禁あり</dt><dd>' + inc + '回</dd></div></dl>';
+    body.innerHTML = chart + hist + '<h2>数字でみる</h2>' + st;
+  }
+
+  /* ---------- settings view ---------- */
+  function renderSettings() {
+    $('#resList').innerHTML = state.residents.map(function (r) {
+      var n = state.records.filter(function (x) { return x.rid === r.id; }).length;
+      return '<li><span>' + esc(r.name) + '</span><span class="rc">' + n + '件</span><button type="button" class="mini" data-act="delres" data-rid="' + r.id + '" data-orig="削除" data-armed-text="本当に削除">削除</button></li>';
+    }).join('') || '<li class="rc">入居者がいません</li>';
+    $('#rules').innerHTML = '<ul>' +
+      '<li>直近の排尿（失禁を含む）の間隔の中央値を、前回の排尿に足して「次の目安」にします。</li>' +
+      '<li>間隔のばらつきから目安の幅を出します。幅の手前は「余裕あり」、幅の中は「そろそろ」、幅を過ぎると「目安超過」です。</li>' +
+      '<li>間隔が' + CFG.minIntervals + '回分たまるまでは目安を出しません。</li>' +
+      '<li>出なしの記録があると、その' + CFG.retry + '分後を再誘導の目安にします。</li>' +
+      '<li>' + (CFG.maxGap / 60) + '時間以上記録がないと「記録が古い」と表示します。</li></ul>';
+  }
+
+  function renderAll() {
+    $('#demoTag').hidden = !state.demo;
+    renderList(); renderPattern(); renderSettings();
+  }
+
+  /* ---------- record sheet ---------- */
+  function setBy(v) {
+    curBy = v;
+    var bs = document.querySelectorAll('.seg button');
+    for (var i = 0; i < bs.length; i++) bs[i].setAttribute('aria-checked', String(bs[i].dataset.by === v));
+  }
+  function renderHist() {
+    var recs = state.records.filter(function (r) { return r.rid === sheetRid; }).sort(function (a, b) { return b.t - a.t; }).slice(0, 4);
+    $('#hist').innerHTML = recs.length ? recs.map(function (r) {
+      return '<li><span class="h-t">' + stamp(r.t) + '</span><span>' + LABEL[r.res] + '・' + BY[r.by] + '</span><button type="button" class="mini" data-act="delrec" data-id="' + r.id + '" data-orig="消す" data-armed-text="本当に消す">消す</button></li>';
+    }).join('') : '<li class="empty">まだ記録がありません</li>';
+  }
+  function openSheet(rid) {
+    sheetRid = rid;
+    $('#sheetTitle').textContent = resById(rid).name;
+    setBy(state.lastBy || 'staff');
+    touched = false;
+    $('#tInput').value = hm(Date.now());
+    renderHist();
+    $('#scrim').hidden = false; $('#sheet').hidden = false;
+    document.body.classList.add('lock');
+    $('#sheet').scrollTop = 0;
+  }
+  function closeSheet() {
+    sheetRid = null;
+    $('#scrim').hidden = true; $('#sheet').hidden = true;
+    document.body.classList.remove('lock');
+    renderList();
+  }
+  function resolveTime(val) {
+    var p = String(val || '').split(':');
+    if (p.length < 2) return Date.now();
+    var d = new Date(); d.setHours(+p[0], +p[1], 0, 0);
+    var t = d.getTime();
+    if (t > Date.now() + 5 * 60000) t -= 864e5;
+    return t;
+  }
+  function toast(msg, undo) {
+    var el = $('#toast');
+    el.innerHTML = '<span>' + esc(msg) + '</span>' + (undo ? '<button type="button" data-act="undo" data-id="' + undo + '">やり直す</button>' : '');
+    el.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { el.hidden = true; }, 6000);
+  }
+  function record(res) {
+    var t = touched ? resolveTime($('#tInput').value) : Date.now();
+    var rec = { id: uid(), rid: sheetRid, t: t, res: res, by: curBy };
+    state.records.push(rec);
+    state.lastBy = curBy;
+    save();
+    var name = resById(sheetRid).name;
+    closeSheet();
+    renderAll();
+    toast(name + ' ' + hm(t) + ' ' + LABEL[res] + '（' + BY[rec.by] + '）を記録しました', rec.id);
+  }
+  function removeRecord(id) {
+    state.records = state.records.filter(function (r) { return r.id !== id; });
+    save();
+  }
+
+  /* ---------- two-step confirm ---------- */
+  function twoStep(btn, fn) {
+    if (btn.dataset.armed) { clearTimeout(btn._t); delete btn.dataset.armed; fn(); return; }
+    btn.dataset.armed = '1';
+    btn.textContent = btn.dataset.armedText || '本当に実行';
+    btn.classList.add('armed');
+    btn._t = setTimeout(function () { delete btn.dataset.armed; btn.textContent = btn.dataset.orig; btn.classList.remove('armed'); }, 4000);
+  }
+
+  /* ---------- tabs ---------- */
+  function setTab(t) {
+    tab = t;
+    var ids = { list: '#viewList', pattern: '#viewPattern', settings: '#viewSettings' };
+    Object.keys(ids).forEach(function (k) { $(ids[k]).hidden = k !== t; });
+    var ts = document.querySelectorAll('.tab');
+    for (var i = 0; i < ts.length; i++) { if (ts[i].dataset.tab === t) ts[i].setAttribute('aria-current', 'page'); else ts[i].removeAttribute('aria-current'); }
+    if (t === 'list') renderList();
+    if (t === 'pattern') renderPattern();
+    window.scrollTo(0, 0);
+  }
+
+  /* ---------- events ---------- */
+  document.addEventListener('click', function (e) {
+    var el = e.target.closest ? e.target.closest('[data-act]') : null;
+    if (!el) return;
+    var act = el.dataset.act;
+    if (act === 'open') openSheet(el.dataset.rid);
+    else if (act === 'close') closeSheet();
+    else if (act === 'tab') setTab(el.dataset.tab);
+    else if (act === 'sel') { selRid = el.dataset.rid; renderPattern(); }
+    else if (act === 'by') setBy(el.dataset.by);
+    else if (act === 'now') { touched = false; $('#tInput').value = hm(Date.now()); }
+    else if (act === 'rec') record(el.dataset.res);
+    else if (act === 'delrec') twoStep(el, function () { removeRecord(el.dataset.id); renderHist(); renderAll(); });
+    else if (act === 'undo') { removeRecord(el.dataset.id); $('#toast').hidden = true; renderAll(); }
+    else if (act === 'addres') {
+      var inp = $('#newName'), name = inp.value.trim().slice(0, 10);
+      if (!name) { inp.focus(); return; }
+      state.residents.push({ id: 'r' + uid(), name: name });
+      save(); inp.value = ''; renderAll();
+    }
+    else if (act === 'delres') twoStep(el, function () {
+      var id = el.dataset.rid;
+      state.residents = state.residents.filter(function (r) { return r.id !== id; });
+      state.records = state.records.filter(function (r) { return r.rid !== id; });
+      save(); renderAll();
+    });
+    else if (act === 'reset-demo') twoStep(el, function () { state = makeDemo(); selRid = null; save(); renderAll(); el.textContent = el.dataset.orig; el.classList.remove('armed'); });
+    else if (act === 'clear-all') twoStep(el, function () { state.records = []; state.demo = false; save(); renderAll(); el.textContent = el.dataset.orig; el.classList.remove('armed'); });
+  });
+  $('#tInput').addEventListener('input', function () { touched = true; });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && sheetRid) closeSheet(); });
+
+  function tick() {
+    $('#clock').textContent = hm(Date.now());
+    if (sheetRid && !touched) $('#tInput').value = hm(Date.now());
+    if (tab === 'list' && !sheetRid) renderList();
+  }
+  setInterval(tick, 15000);
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) tick(); });
+
+  state = load() || makeDemo();
+  save();
+  renderAll();
+  tick();
+})();
+</script>
+
+</body>
+</html>
